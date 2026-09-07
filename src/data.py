@@ -11,6 +11,7 @@ never read. The held-out validation set is carved out of ``train.csv`` by
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -61,20 +62,42 @@ def download_titanic(dest_dir: Path = DATA_DIR, force: bool = False) -> Path:
         If the download fails, with a message explaining how to fix the most
         likely causes (missing API token / competition rules not accepted).
     """
-    # TODO (מרים):
-    #  1. אם dest_dir/train.csv כבר קיים ו-force הוא False -> להחזיר אותו מיד.
-    #     (למה: לא רוצים להוריד מחדש בכל הרצה. זה גם מה שמאפשר לעבוד אופליין.)
-    #  2. ליצור את dest_dir אם הוא לא קיים -> mkdir(parents=True, exist_ok=True)
-    #  3. import kagglehub  (ייבוא *בתוך* הפונקציה בכוונה — ככה מי שכבר יש לו
-    #     את הקובץ מקומית יכול להשתמש במודול בלי שה-import ייכשל.)
-    #  4. kagglehub.competition_download(COMPETITION) מחזיר נתיב לתיקייה,
-    #     לא לקובץ. צריך לחפש בתוכה את train.csv.
-    #  5. להעתיק את train.csv אל dest_dir (shutil.copy) ולהחזיר את הנתיב החדש.
-    #  6. לעטוף 3-5 ב-try/except ולזרוק RuntimeError עם הודעה ברורה:
-    #     - איפה לשים את kaggle.json
-    #     - שצריך ללחוץ "Join Competition" בעמוד התחרות
-    #     זה בדיוק ה-"error handling" שנבדק במטלה.
-    raise NotImplementedError
+    dest_dir = Path(dest_dir)
+    dest_path = dest_dir / TRAIN_FILENAME
+
+    # Reuse a local copy when we have one -> reproducible and works offline.
+    if dest_path.exists() and not force:
+        return dest_path
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Imported lazily so that anyone who already has train.csv locally
+        # can still `import src.data` without kagglehub installed.
+        import kagglehub
+
+        # competition_download() returns a directory, not a file path.
+        downloaded_dir = Path(kagglehub.competition_download(COMPETITION))
+        matches = list(downloaded_dir.rglob(TRAIN_FILENAME))
+        if not matches:
+            raise FileNotFoundError(
+                f"'{TRAIN_FILENAME}' was not found under {downloaded_dir}"
+            )
+        shutil.copy(matches[0], dest_path)
+    except Exception as exc:  # noqa: BLE001 - surfaced as a clear RuntimeError
+        raise RuntimeError(
+            "Failed to download the Titanic dataset from Kaggle.\n"
+            "Checklist:\n"
+            "  1. Create a Kaggle API token: kaggle.com/settings -> API -> "
+            "'Create New Token'. Place the downloaded kaggle.json at "
+            f"{Path.home() / '.kaggle' / 'kaggle.json'}\n"
+            "  2. Accept the competition rules at "
+            "kaggle.com/competitions/titanic by clicking 'Join Competition' "
+            "-> the API returns 403 Forbidden until this is done.\n"
+            f"Original error: {exc}"
+        ) from exc
+
+    return dest_path
 
 
 # --- Loading -----------------------------------------------------------------
@@ -99,14 +122,24 @@ def load_train_csv(csv_path: Path | str) -> pd.DataFrame:
     ValueError
         If expected columns are missing.
     """
-    # TODO (מרים):
-    #  1. להמיר ל-Path ולבדוק exists() -> אחרת FileNotFoundError עם הודעה
-    #     שמזכירה להריץ את download_titanic().
-    #  2. pd.read_csv
-    #  3. לבדוק שכל EXPECTED_COLUMNS נמצאות. אם חסרות -> ValueError שמפרט
-    #     *אילו* עמודות חסרות (הודעה שימושית, לא סתם "invalid file").
-    #  4. להחזיר את ה-DataFrame.
-    raise NotImplementedError
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"'{csv_path}' does not exist. Call download_titanic() first, "
+            "or pass the correct path to the Kaggle train.csv."
+        )
+
+    df = pd.read_csv(csv_path)
+
+    missing_cols = [c for c in EXPECTED_COLUMNS if c not in df.columns]
+    if missing_cols:
+        raise ValueError(
+            f"'{csv_path}' is missing expected column(s): {missing_cols}. "
+            "Make sure this is the Kaggle Titanic train.csv, not test.csv "
+            "or gender_submission.csv."
+        )
+
+    return df
 
 
 # --- Splitting ---------------------------------------------------------------
@@ -118,7 +151,7 @@ def split_train_val(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Split the dataframe into train and validation sets.
 
-    The split is **stratified** on the target so both sides keep the same
+    The split is stratified on the target so both sides keep the same
     survival rate, and it is seeded so the same split is reproduced by
     ``train.py`` and by the Streamlit app.
 
@@ -134,16 +167,16 @@ def split_train_val(
     Returns
     -------
     tuple of (pandas.DataFrame, pandas.DataFrame)
-        ``(train_df, val_df)``.
+        ``(train_df, val_df)``, each with a fresh 0..n-1 index.
     """
-    # TODO (מרים):
-    #  1. train_test_split על ה-DataFrame כולו (לא לפצל X ו-y בנפרד — נוח יותר
-    #     להחזיר DataFrames שלמים, וה-preprocessing יקרה אחר כך).
-    #  2. stratify=df[TARGET]   <-- אל תשכחי. בלי זה יחס השורדים בוולידציה
-    #     יכול לצאת שונה מה-train והמדידה תהיה מוטה.
-    #  3. random_state=seed, shuffle=True
-    #  4. להחזיר (train_df, val_df).
-    raise NotImplementedError
+    train_df, val_df = train_test_split(
+        df,
+        test_size=val_size,
+        random_state=seed,
+        shuffle=True,
+        stratify=df[TARGET],
+    )
+    return train_df.reset_index(drop=True), val_df.reset_index(drop=True)
 
 
 # --- Sample for the repo -----------------------------------------------------
@@ -157,8 +190,10 @@ def make_sample_csv(
     """Write a small sample CSV that is safe to commit to the repository.
 
     The assignment asks for a ``data/`` folder containing a small sample
-    dataset. This sample lets a reviewer exercise the inference screen without
-    Kaggle credentials.
+    dataset. This sample lets a reviewer exercise the inference screen
+    without Kaggle credentials. The sample keeps both classes represented
+    (stratified), so the demo isn't accidentally all-survivors or
+    all-non-survivors.
 
     Parameters
     ----------
@@ -176,15 +211,26 @@ def make_sample_csv(
     Path
         The path written to.
     """
-    # TODO (מרים):
-    #  1. אם out_path הוא None -> DATA_DIR / SAMPLE_FILENAME
-    #  2. df.sample(n=..., random_state=seed)
-    #     שקלי להשתמש ב-groupby(TARGET) כדי שהדגימה תכיל גם שורדים וגם לא —
-    #     דגימה של 30 שורות אקראיות עלולה לצאת חד-צדדית ואז הגרפים במסך
-    #     ה-inference ייראו מוזר.
-    #  3. to_csv(out_path, index=False)  <-- index=False, אחרת נוצרת עמודה מיותרת
-    #  4. להחזיר את out_path.
-    raise NotImplementedError
+    if out_path is None:
+        out_path = DATA_DIR / SAMPLE_FILENAME
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    n = min(n, len(df))
+
+    def _take(group: pd.DataFrame) -> pd.DataFrame:
+        share = max(1, round(n * len(group) / len(df)))
+        return group.sample(n=min(share, len(group)), random_state=seed)
+
+    parts = [_take(group) for _, group in df.groupby(TARGET)]
+    sample = (
+        pd.concat(parts)
+        .sample(frac=1, random_state=seed)  # shuffle rows
+        .reset_index(drop=True)
+    )
+
+    sample.to_csv(out_path, index=False)
+    return out_path
 
 
 # --- Smoke test --------------------------------------------------------------
