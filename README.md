@@ -26,11 +26,23 @@ Measured on the 179-row held-out validation split (seed 42, 80/20 stratified):
 A majority-class classifier that predicts "did not survive" for everyone scores
 **0.615** accuracy on this split, so that is the bar the model has to clear.
 
-<!-- TODO (Miriam): one or two sentences interpreting these numbers. Worth
-     covering: precision (0.828) is well above recall (0.696), meaning the
-     model is conservative about predicting survival at a 0.5 threshold - it
-     misses survivors more often than it invents them. The app's threshold
-     slider exposes that trade-off directly. -->
+### How much confidence do these numbers carry?
+
+Accuracy has a bootstrap 95% confidence interval of **[0.771, 0.883]** (2,000
+resamples). The interval is wide because the validation split holds 179 rows,
+where a single passenger moves accuracy by 0.56 percentage points — a change
+from 0.827 to 0.850 amounts to classifying four more passengers correctly.
+
+Differences of a few points on a split this size are therefore not
+distinguishable from noise, which is why no hyperparameter search was run
+against the validation set: it would have produced numbers that look like
+improvements without evidence that they are.
+
+<!-- TODO (Miriam): one or two sentences interpreting the precision/recall
+     gap. Worth covering: precision (0.828) is well above recall (0.696),
+     meaning the model is conservative about predicting survival at a 0.5
+     threshold - it misses survivors more often than it invents them. The
+     app's threshold slider exposes that trade-off directly. -->
 
 ---
 
