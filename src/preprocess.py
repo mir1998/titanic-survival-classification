@@ -124,7 +124,7 @@ def build_preprocessor() -> ColumnTransformer:
     ===================  =====================================================
     continuous           median impute -> standard scale
     skewed numerical     median impute -> log1p -> standard scale
-    ordinal              passthrough
+    ordinal              most-frequent impute -> standard scale
     binary               passthrough
     categorical          most-frequent impute -> one-hot
     ===================  =====================================================
@@ -153,7 +153,11 @@ def build_preprocessor() -> ColumnTransformer:
         ),
         ("scaler", StandardScaler()),
     ])
-
+    # Ordinal features: impute missing class values, then scale
+    ordinal_pipeline = Pipeline([
+    ("imputer", SimpleImputer(strategy="most_frequent")),
+    ("scaler", StandardScaler()),
+    ])
     # Categorical features: mode imputation + one-hot encoding
     categorical_pipeline = Pipeline([
         ("imputer", SimpleImputer(strategy="most_frequent")),
@@ -168,12 +172,12 @@ def build_preprocessor() -> ColumnTransformer:
 
     # Apply the appropriate transformation to each feature group
     preprocessor = ColumnTransformer([
-        ("continuous", continuous_pipeline, CONTINUOUS_FEATURES),
-        ("skewed", skewed_pipeline, SKEWED_NUMERICAL_FEATURES),
-        ("ordinal", "passthrough", ORDINAL_FEATURES),
-        ("binary", "passthrough", BINARY_FEATURES),
-        ("categorical", categorical_pipeline, CATEGORICAL_FEATURES),
-    ])
+    ("continuous", continuous_pipeline, CONTINUOUS_FEATURES),
+    ("skewed", skewed_pipeline, SKEWED_NUMERICAL_FEATURES),
+    ("ordinal", ordinal_pipeline, ORDINAL_FEATURES),
+    ("binary", "passthrough", BINARY_FEATURES),
+    ("categorical", categorical_pipeline, CATEGORICAL_FEATURES),
+])
 
     return preprocessor
 
