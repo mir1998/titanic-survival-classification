@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
     auc,
     confusion_matrix,
     f1_score,
@@ -38,41 +39,27 @@ def compute_metrics(
     y_prob: np.ndarray,
     threshold: float = DEFAULT_THRESHOLD,
 ) -> dict[str, float]:
-    """Compute the headline classification metrics.
+    """Compute the headline classification metrics."""
 
-    Parameters
-    ----------
-    y_true:
-        Ground-truth labels, 0/1.
-    y_prob:
-        Predicted probabilities in ``[0, 1]``.
-    threshold:
-        Probability above which a passenger is predicted to have survived.
+    y_pred = (y_prob >= threshold).astype(int)
 
-    Returns
-    -------
-    dict
-        ``accuracy``, ``precision``, ``recall``, ``f1``, ``roc_auc``.
-        Plain Python floats, so the dict is JSON-serialisable for
-        ``metadata.json``.
+    metrics = {
+        "accuracy": float(accuracy_score(y_true, y_pred)),
+        "precision": float(
+            precision_score(y_true, y_pred, zero_division=0)
+        ),
+        "recall": float(
+            recall_score(y_true, y_pred, zero_division=0)
+        ),
+        "f1": float(
+            f1_score(y_true, y_pred, zero_division=0)
+        ),
+        "roc_auc": float(
+            roc_auc_score(y_true, y_prob)
+        ),
+    }
 
-    Notes
-    -----
-    ``roc_auc`` is computed from ``y_prob`` directly and is therefore
-    threshold-independent; the other four all depend on ``threshold``.
-    That is the point of reporting both kinds together.
-    """
-    # TODO (Miriam):
-    #  1. y_pred = (y_prob >= threshold).astype(int)
-    #  2. accuracy_score / precision_score / recall_score / f1_score on y_pred
-    #     Use zero_division=0 on precision - if the model predicts no
-    #     survivors at all at some threshold, precision is 0/0 and sklearn
-    #     warns loudly. Relevant once the app has a threshold slider.
-    #  3. roc_auc_score on y_PROB, not y_pred. Passing hard labels here is a
-    #     classic mistake: it silently returns a much lower, meaningless number.
-    #  4. Wrap each value in float() so json.dumps() accepts them
-    #     (numpy scalars are not JSON-serialisable).
-    raise NotImplementedError
+    return metrics
 
 
 def plot_confusion_matrix(
@@ -115,6 +102,9 @@ def plot_precision_recall_curve(y_true: np.ndarray, y_prob: np.ndarray) -> plt.F
     #  auc(recall, precision) gives the area. Add a horizontal baseline at
     #  y_true.mean() - that is what a random classifier achieves here, and it
     #  is exactly the 38.3% survival rate from the EDA.
+    # average_precision_score(y_true, y_prob) summarizes the PR curve.
+    # Add a horizontal baseline at y_true.mean(), which represents
+    # the positive-class prevalence.
     raise NotImplementedError
 
 
