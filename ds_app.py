@@ -168,58 +168,227 @@ def render_validation_page() -> None:
     """Screen 1: results on the held-out validation split."""
     st.header("Validation Results")
 
-    # TODO (Miriam):
-    #  1. Wrap load_artifacts() / load_val_predictions() in try/except
-    #     FileNotFoundError and st.error(...) + st.stop() with the
-    #     "run python train.py first" message. The app must not traceback
-    #     when someone clones the repo and opens it before training.
-    #  2. Pull metadata out for display: seed, val_size, best_epoch,
-    #     input_dim, learning_rate, batch_size. st.caption or an expander
-    #     is a tidy place for this - it documents reproducibility in the UI.
-    #  3. Threshold slider:
-    #       threshold = st.slider("Decision threshold", 0.0, 1.0,
-    #                             value=metadata["threshold"], step=0.01)
-    #     Then recompute compute_metrics(y_true, y_prob, threshold) live.
-    #     This is why train.py saved probabilities rather than hard labels.
-    #  4. Metrics row: st.columns(5) with st.metric() for accuracy,
-    #     precision, recall, f1, roc_auc.
-    #     Worth adding: the majority-class baseline (1 - y_true.mean()) as a
-    #     reference point, so a reviewer sees 82.7% against 61.7% rather
-    #     than a bare number.
-    #  5. Plots: st.columns(2) and st.pyplot(fig) for each of the four
-    #     evaluate.py figures. Note roc/pr take (y_true, y_prob) only, while
-    #     confusion matrix and probability distribution also take threshold.
-    raise NotImplementedError
+    try:
+        _, _, metadata = load_artifacts()
+        val_predictions = load_val_predictions()
+    except FileNotFoundError as exc:
+        st.error(str(exc))
+        st.stop()
+
+    y_true = val_predictions["y_true"].to_numpy()
+    y_prob = val_predictions["y_prob"].to_numpy()
+
+    with st.expander("Training configuration"):
+        st.write({
+            "seed": metadata["seed"],
+            "validation_size": metadata["val_size"],
+            "best_epoch": metadata["best_epoch"],
+            "input_dim": metadata["input_dim"],
+            "learning_rate": metadata["learning_rate"],
+            "batch_size": metadata["batch_size"],
+        })
+
+    threshold = st.slider(
+        "Decision threshold",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(metadata["threshold"]),
+        step=0.01,
+    )
+
+    metrics = compute_metrics(
+        y_true,
+        y_prob,
+        threshold=threshold,
+    )
+
+    majority_baseline = max(
+        y_true.mean(),
+        1 - y_true.mean(),
+    )
+
+    st.caption(
+        f"Majority-class accuracy baseline: {majority_baseline:.3f}"
+    )
+
+    cols = st.columns(5)
+
+    cols[0].metric("Accuracy", f"{metrics['accuracy']:.3f}")
+    cols[1].metric("Precision", f"{metrics['precision']:.3f}")
+    cols[2].metric("Recall", f"{metrics['recall']:.3f}")
+    cols[3].metric("F1", f"{metrics['f1']:.3f}")
+    cols[4].metric("ROC-AUC", f"{metrics['roc_auc']:.3f}")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.pyplot(
+            plot_confusion_matrix(
+                y_true,
+                y_prob,
+                threshold=threshold,
+            )
+        )
+
+    with col2:
+        st.pyplot(
+            plot_roc_curve(
+                y_true,
+                y_prob,
+            )
+        )
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.pyplot(
+            plot_precision_recall_curve(
+                y_true,
+                y_prob,
+            )
+        )
+
+    with col4:
+        st.pyplot(
+            plot_probability_distribution(
+                y_true,
+                y_prob,
+                threshold=threshold,
+            )
+        )
 
 
 def render_inference_page() -> None:
     """Screen 2: run the saved model against a user-supplied CSV."""
     st.header("Inference")
 
-    # TODO (Miriam):
-    #  1. Input. The assignment explicitly asks for a *path*, so
-    #     st.text_input is the primary control - keep it. A st.file_uploader
-    #     alongside it is a nice extra, but must not replace the path box.
-    #     Pre-fill the default with str(SAMPLE_CSV) so the app is usable
-    #     immediately by a reviewer with no data of their own.
-    #  2. A "Run inference" button (st.button) so it does not fire on every
-    #     keystroke while the path is being typed.
-    #  3. Load: read_csv_from_path -> catch (FileNotFoundError, ValueError)
-    #     -> st.error(str(exc)) and return. Never let a traceback reach the UI.
-    #  4. Validate: find_missing_columns(df). If non-empty, st.error listing
-    #     exactly which columns are missing, then return.
-    #  5. Predict: run_inference(...) and show the table with st.dataframe.
-    #     Add st.download_button for the results as CSV - cheap and it makes
-    #     the screen genuinely useful rather than just a demo.
-    #  6. THE IMPORTANT BRANCH:
-    #       if TARGET in df.columns:
-    #           -> full evaluation: metrics + the same four plots
-    #       else:
-    #           -> st.info("No 'Survived' column, so predictions are shown
-    #              without evaluation") and display predictions only.
-    #     A file without labels is the normal inference case, not an error.
-    #     This branch is the "error handling and robustness" criterion.
-    raise NotImplementedError
+    path_str = st.text_input(
+        "Path to CSV file",
+        value=str(SAMPLE_CSV),
+    )
+
+    threshold = st.slider(
+        "Decision threshold",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.5,
+        step=0.01,
+        key="inference_threshold",
+    )
+
+    if not st.button("Run inference"):
+        return
+
+    try:
+        model, preprocessor, _ = load_artifacts()
+        df = read_csv_from_path(path_str)
+    except (FileNotFoundError, ValueError) as exc:
+        st.error(str(exc))
+        return
+
+    missing_columns = find_missing_columns(df)
+
+    if missing_columns:
+        st.error(
+            "Missing required columns: "
+            + ", ".join(missing_columns)
+        )
+        return
+
+    try:
+        results = run_inference(
+            df,
+            model,
+            preprocessor,
+            threshold=threshold,
+        )
+    except Exception as exc:
+        st.error(f"Inference failed: {exc}")
+        return
+
+    st.subheader("Predictions")
+    st.dataframe(results, use_container_width=True)
+
+    csv_bytes = results.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        label="Download predictions as CSV",
+        data=csv_bytes,
+        file_name="titanic_predictions.csv",
+        mime="text/csv",
+    )
+
+    if TARGET not in df.columns:
+        st.info(
+            "No 'Survived' column was found, so predictions are shown "
+            "without evaluation metrics."
+        )
+        return
+
+    y_true = df[TARGET].to_numpy()
+
+    if not set(pd.Series(y_true).dropna().unique()).issubset({0, 1}):
+        st.error(
+            "'Survived' must contain only binary values 0 and 1 "
+            "to compute evaluation metrics."
+        )
+        return
+
+    y_prob = results["survival_probability"].to_numpy()
+
+    metrics = compute_metrics(
+        y_true,
+        y_prob,
+        threshold=threshold,
+    )
+
+    st.subheader("Evaluation")
+
+    cols = st.columns(5)
+
+    cols[0].metric("Accuracy", f"{metrics['accuracy']:.3f}")
+    cols[1].metric("Precision", f"{metrics['precision']:.3f}")
+    cols[2].metric("Recall", f"{metrics['recall']:.3f}")
+    cols[3].metric("F1", f"{metrics['f1']:.3f}")
+    cols[4].metric("ROC-AUC", f"{metrics['roc_auc']:.3f}")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.pyplot(
+            plot_confusion_matrix(
+                y_true,
+                y_prob,
+                threshold=threshold,
+            )
+        )
+
+    with col2:
+        st.pyplot(
+            plot_roc_curve(
+                y_true,
+                y_prob,
+            )
+        )
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.pyplot(
+            plot_precision_recall_curve(
+                y_true,
+                y_prob,
+            )
+        )
+
+    with col4:
+        st.pyplot(
+            plot_probability_distribution(
+                y_true,
+                y_prob,
+                threshold=threshold,
+            )
+        )
 
 
 # --- Entry point -------------------------------------------------------------
