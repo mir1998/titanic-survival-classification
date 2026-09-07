@@ -26,7 +26,7 @@ Usage
 """
 
 from __future__ import annotations
-
+import copy
 import argparse
 import json
 import random
@@ -91,33 +91,52 @@ def set_seed(seed: int) -> None:
 def build_tensors(
     train_df: pd.DataFrame,
     val_df: pd.DataFrame,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, object, list[str]]:
-    """Engineer features, fit the preprocessor, and return tensors.
+) -> tuple[
+    torch.Tensor,
+    torch.Tensor,
+    torch.Tensor,
+    torch.Tensor,
+    object,
+    list[str],
+]:
+    """Engineer features, fit the preprocessor, and return tensors."""
 
-    Returns
-    -------
-    tuple
-        ``(X_train, y_train, X_val, y_val, preprocessor, feature_names)``
-        where the X tensors are float32 of shape ``(n, input_dim)`` and the
-        y tensors are float32 of shape ``(n, 1)``.
-    """
-    # TODO (Miriam):
-    #  1. add_engineered_features on BOTH frames.
-    #  2. pre = build_preprocessor()
-    #  3. X_train = pre.fit_transform(train_feat)   <- fit ONLY on train
-    #     X_val   = pre.transform(val_feat)         <- transform only
-    #     This is the single most important line ordering in the project.
-    #  4. Convert to tensors:
-    #       torch.tensor(np.asarray(X, dtype=np.float32))
-    #  5. Targets: df[TARGET].to_numpy(dtype=np.float32), then
-    #       .reshape(-1, 1)  <- must match the model's (batch, 1) output.
-    #       BCEWithLogitsLoss compares shapes explicitly and raises
-    #       "Target size (n) must be the same as input size (n, 1)" on a
-    #       mismatch, so this fails loudly and immediately rather than
-    #       corrupting training. (Note that MSELoss would instead broadcast
-    #       with only a warning - but that is not the loss used here.)
-    #  6. Return everything plus get_feature_names(pre).
-    raise NotImplementedError
+    # Add row-local engineered features
+    train_feat = add_engineered_features(train_df)
+    val_feat = add_engineered_features(val_df)
+
+    # Fit preprocessing only on the training split
+    preprocessor = build_preprocessor()
+
+    X_train_np = preprocessor.fit_transform(train_feat)
+    X_val_np = preprocessor.transform(val_feat)
+
+    # Convert feature matrices to float32 tensors
+    X_train = torch.tensor(
+        np.asarray(X_train_np, dtype=np.float32)
+    )
+    X_val = torch.tensor(
+        np.asarray(X_val_np, dtype=np.float32)
+    )
+
+    # Targets must match the model output shape: (n_samples, 1)
+    y_train = torch.tensor(
+        train_df[TARGET].to_numpy(dtype=np.float32).reshape(-1, 1)
+    )
+    y_val = torch.tensor(
+        val_df[TARGET].to_numpy(dtype=np.float32).reshape(-1, 1)
+    )
+
+    feature_names = get_feature_names(preprocessor)
+
+    return (
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        preprocessor,
+        feature_names,
+    )
 
 
 # --- Training ----------------------------------------------------------------
@@ -129,22 +148,25 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
 ) -> float:
     """Run one training epoch and return the mean batch loss."""
-    # TODO (Miriam): the core loop. For each (xb, yb) in loader:
-    #  1. optimizer.zero_grad()
-    #     PyTorch ACCUMULATES gradients across .backward() calls by design
-    #     (it is what makes gradient accumulation and RNNs work). Skip this
-    #     and every batch's gradients pile onto the previous ones. No error
-    #     is raised - the model just trains badly, which is hard to spot.
-    #  2. logits = model(xb)
-    #  3. loss = criterion(logits, yb)
-    #  4. loss.backward()      <- computes gradients
-    #  5. optimizer.step()     <- applies them to the weights
-    #     This order matters: step() uses whatever backward() just produced.
-    #  6. Accumulate loss.item() and return the mean over batches.
-    #
-    #  Remember model.train() before the loop - that is the caller's job in
-    #  main(), but double-check it is happening.
-    raise NotImplementedError
+
+    model.train()
+
+    total_loss = 0.0
+    n_batches = 0
+
+    for xb, yb in loader:
+        optimizer.zero_grad()
+
+        logits = model(xb)
+        loss = criterion(logits, yb)
+
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        n_batches += 1
+
+    return total_loss / n_batches
 
 
 @torch.no_grad()
@@ -155,15 +177,13 @@ def evaluate_loss(
     criterion: nn.Module,
 ) -> float:
     """Compute loss on a full tensor without updating anything."""
-    # TODO (Miriam):
-    #  1. model.eval()  <- turns Dropout off. With dropout still active the
-    #     validation loss becomes stochastic: the same weights and the same
-    #     data give a different number on each call. Early stopping compares
-    #     these numbers across epochs, so that noise makes it stop at an
-    #     essentially arbitrary point.
-    #  2. logits = model(X); return criterion(logits, y).item()
-    #  The decorator already handles no_grad.
-    raise NotImplementedError
+
+    model.eval()
+
+    logits = model(X)
+    loss = criterion(logits, y)
+
+    return loss.item()
 
 
 def fit(
@@ -175,39 +195,65 @@ def fit(
     lr: float,
     patience: int,
 ) -> dict:
-    """Train with early stopping on validation loss.
+    """Train with early stopping on validation loss."""
 
-    Returns
-    -------
-    dict
-        History with ``train_loss`` and ``val_loss`` lists, plus
-        ``best_epoch``. The model is left holding the **best** weights, not
-        the last ones.
-    """
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    # TODO (Miriam):
-    #  1. Track best_val_loss (start at inf), best_state (None), epochs_without_improvement.
-    #  2. For each epoch:
-    #       model.train()
-    #       train_loss = train_one_epoch(...)
-    #       val_loss   = evaluate_loss(...)
-    #       append both to history
-    #       if val_loss < best_val_loss:
-    #           record best_val_loss, best_epoch
-    #           best_state = copy.deepcopy(model.state_dict())
-    #               <- deepcopy is REQUIRED. state_dict() returns references
-    #                  to the live tensors, so without a copy your "best"
-    #                  snapshot mutates as training continues and you end up
-    #                  restoring the final weights instead.
-    #           reset the counter
-    #       else:
-    #           increment counter; break if it reaches patience
-    #       print progress every ~10 epochs so the run is not silent
-    #  3. After the loop: model.load_state_dict(best_state) to restore the best.
-    #  4. Return the history dict.
-    raise NotImplementedError
+    history = {
+        "train_loss": [],
+        "val_loss": [],
+        "best_epoch": None,
+    }
+
+    best_val_loss = float("inf")
+    best_state = None
+    epochs_without_improvement = 0
+
+    for epoch in range(1, epochs + 1):
+        train_loss = train_one_epoch(
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+        )
+
+        val_loss = evaluate_loss(
+            model,
+            X_val,
+            y_val,
+            criterion,
+        )
+
+        history["train_loss"].append(train_loss)
+        history["val_loss"].append(val_loss)
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            history["best_epoch"] = epoch
+            best_state = copy.deepcopy(model.state_dict())
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+
+        if epoch == 1 or epoch % 10 == 0:
+            print(
+                f"Epoch {epoch:03d} | "
+                f"train_loss={train_loss:.4f} | "
+                f"val_loss={val_loss:.4f}"
+            )
+
+        if epochs_without_improvement >= patience:
+            print(
+                f"Early stopping at epoch {epoch} "
+                f"(best epoch: {history['best_epoch']})"
+            )
+            break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+
+    return history
 
 
 # --- Orchestration -----------------------------------------------------------
