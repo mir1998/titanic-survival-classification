@@ -32,8 +32,6 @@ A bootstrap estimate over the validation predictions gives a 95% confidence inte
 
 With only 179 validation rows, small differences should be interpreted cautiously: one passenger changes accuracy by about 0.56 percentage points. For that reason, I avoided broad hyperparameter tuning against the validation split and treated it primarily as a held-out evaluation set.
 
-At the default 0.5 threshold, the model favors precision over recall: when it predicts survival, it is usually correct, but it still misses some survivors. The threshold slider in the Streamlit app makes this trade-off easy to explore interactively.
-
 ---
 
 ## Setup
@@ -132,7 +130,7 @@ Enter a path to a CSV and run the saved preprocessing pipeline and model on new 
 data/sample_titanic.csv
 ```
 
-If the CSV contains a `Survived` column, the app also shows evaluation metrics and plots. 
+If the CSV contains a `Survived` column, the app also shows evaluation metrics and plots.
 Without labels, it simply returns predictions, which is the normal inference workflow.
 
 ---
@@ -249,7 +247,7 @@ single ordinal-numeric feature rather than expanding it into three one-hot
 columns.
 
 It is standardized before entering the network so its scale is aligned with
-the other numerical inputs..
+the other numerical inputs.
 
 ### `Fare` is log-transformed
 
