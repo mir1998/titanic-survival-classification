@@ -201,6 +201,40 @@ Output: 17 features.
 
 ---
 
+## Exploratory analysis
+
+Full analysis in [`notebooks/eda.ipynb`](notebooks/eda.ipynb). The split is
+performed before any exploration, and every cell operates on the training
+split alone. Three findings drove the decisions below.
+
+### The target is imbalanced
+
+![Survival distribution](docs/eda_target_distribution.png)
+
+439 of 712 training passengers did not survive (61.7%). A model that predicts
+"did not survive" for everyone would therefore score 0.615 accuracy without
+learning anything — which is why accuracy is reported alongside precision,
+recall, F1 and ROC-AUC rather than on its own.
+
+### Survival falls monotonically with passenger class
+
+![Survival by passenger class](docs/eda_pclass_survival.png)
+
+64.9%, 44.7%, 24.3% across first, second and third class. The decline is
+monotonic and the gaps are comparable, so the ordering carries real
+information — the basis for keeping `Pclass` as a single scaled ordinal
+feature instead of expanding it into three one-hot columns.
+
+### `Fare` is heavily right-skewed
+
+![Fare distribution](docs/eda_fare_distribution.png)
+
+Most fares sit below 100 while the tail reaches 512.3, and the mean (31.8) is
+more than double the median (14.5). This is what motivates the `log1p`
+transform, and median rather than mean imputation.
+
+---
+
 ## Design choices
 
 ### Validation data is never used to make decisions
