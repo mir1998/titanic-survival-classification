@@ -43,91 +43,65 @@ class TitanicNet(nn.Module):
         input_dim: int,
         hidden_dims: tuple[int, ...] = DEFAULT_HIDDEN_DIMS,
         dropout: float = DEFAULT_DROPOUT,
-    ) -> None:
+        ) -> None:
         super().__init__()
-        # TODO (Miriam):
-        #  Build the stack. For each hidden dim, in order:
-        #      Linear(prev_dim, h) -> ReLU -> Dropout(dropout)
-        #  then a final Linear(last_hidden, 1).
-        #
-        #  Two ways to do it, both fine:
-        #    (a) collect the layers in a list and wrap in nn.Sequential(*layers)
-        #    (b) write them out explicitly as self.fc1, self.fc2, ...
-        #  (a) generalises to any hidden_dims without editing forward().
-        #
-        #  NOTE: no Sigmoid at the end. The final layer outputs a raw logit.
-        #  See forward() for why.
-        raise NotImplementedError
+
+        layers = []
+        prev_dim = input_dim
+
+        for hidden_dim in hidden_dims:
+            layers.extend([
+                nn.Linear(prev_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+            ])
+            prev_dim = hidden_dim
+
+        # Final layer outputs a single raw logit
+        layers.append(nn.Linear(prev_dim, 1))
+
+        self.network = nn.Sequential(*layers)
+  
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run a forward pass.
-
-        Parameters
-        ----------
-        x:
-            Float tensor of shape ``(batch_size, input_dim)``.
-
-        Returns
-        -------
-        torch.Tensor
-            Raw logits of shape ``(batch_size, 1)``. **Not** probabilities.
-
-        Notes
-        -----
-        Returning logits rather than probabilities is deliberate.
-        ``nn.BCEWithLogitsLoss`` combines the sigmoid and the binary
-        cross-entropy into one operation that is numerically stable via the
-        log-sum-exp trick. Doing ``Sigmoid()`` followed by ``nn.BCELoss()``
-        is mathematically identical but can overflow to ``inf``/``NaN`` once
-        a logit grows large, because the sigmoid saturates to exactly 0.0 or
-        1.0 in float32 and the loss then takes ``log(0)``.
-        """
-        # TODO (Miriam): pass x through the stack and return the result.
-        raise NotImplementedError
+        """Run a forward pass."""
+        return self.network(x)
 
 
 @torch.no_grad()
-def predict_proba(model: TitanicNet, X: np.ndarray | torch.Tensor) -> np.ndarray:
-    """Return survival probabilities for a feature matrix.
+def predict_proba(
+    model: TitanicNet,
+    X: np.ndarray | torch.Tensor
+) -> np.ndarray:
+    """Return survival probabilities for a feature matrix."""
 
-    This is the single place where the sigmoid is applied, so training and
-    inference cannot drift apart.
+    # Disable dropout and use inference behavior
+    model.eval()
 
-    Parameters
-    ----------
-    model:
-        The network. Set to eval mode internally.
-    X:
-        Preprocessed feature matrix of shape ``(n_samples, input_dim)``.
+    # Convert input to float32 tensor if needed
+    if isinstance(X, torch.Tensor):
+        x_tensor = X.float()
+    else:
+        x_tensor = torch.tensor(X, dtype=torch.float32)
 
-    Returns
-    -------
-    numpy.ndarray
-        1-D array of probabilities in ``[0, 1]``, length ``n_samples``.
-    """
-    # TODO (Miriam):
-    #  1. model.eval()   <- switches Dropout OFF. Without this the same input
-    #     returns a different answer on every call, because dropout keeps
-    #     randomly zeroing units. Silent and very confusing to debug.
-    #  2. Convert X to a float32 tensor if it is not one already.
-    #  3. logits = model(X)
-    #  4. torch.sigmoid(logits) -> squeeze to 1-D -> .numpy()
-    #
-    #  The @torch.no_grad() decorator above already disables gradient
-    #  tracking for the whole function, so no need to wrap anything.
-    raise NotImplementedError
+    # Convert raw logits to probabilities
+    logits = model(x_tensor)
+    probabilities = torch.sigmoid(logits)
+
+    return probabilities.squeeze(1).cpu().numpy()
 
 
 def save_model(model: TitanicNet, path: Path | str) -> Path:
-    """Persist model weights to disk.
+    """Persist model weights to disk."""
 
-    Saves ``state_dict()`` (the tensors only) rather than the model object.
-    Pickling the object itself embeds a reference to this module's import
-    path, so it breaks if the file is later moved or renamed. A state dict
-    is just weights and reloads into any matching architecture.
-    """
-    # TODO (Miriam): mkdir parent, torch.save(model.state_dict(), path), return Path.
-    raise NotImplementedError
+    path = Path(path)
+
+    # Ensure the destination directory exists
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    torch.save(model.state_dict(), path)
+
+    return path
 
 
 def load_model(
@@ -136,26 +110,28 @@ def load_model(
     hidden_dims: tuple[int, ...] = DEFAULT_HIDDEN_DIMS,
     dropout: float = DEFAULT_DROPOUT,
 ) -> TitanicNet:
-    """Rebuild the network and load saved weights into it.
+    """Rebuild the network and load saved weights into it."""
 
-    Because a state dict holds no architecture information, the caller must
-    supply ``input_dim`` (and the hidden sizes, if non-default). ``train.py``
-    writes these into ``metadata.json`` for exactly this reason - the
-    Streamlit app reads them back rather than guessing.
+    path = Path(path)
 
-    Raises
-    ------
-    FileNotFoundError
-        Pointing the user at ``python train.py``.
-    """
-    # TODO (Miriam):
-    #  1. Path(path); if not exists -> FileNotFoundError mentioning train.py
-    #  2. model = TitanicNet(input_dim, hidden_dims, dropout)
-    #  3. model.load_state_dict(torch.load(path, map_location="cpu"))
-    #     map_location="cpu" keeps it working on a machine without a GPU.
-    #  4. model.eval()  <- load for inference, so leave it in eval mode
-    #  5. return model
-    raise NotImplementedError
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Model weights not found at '{path}'. "
+            "Run `python train.py` first to generate the training artifacts."
+        )
+
+    model = TitanicNet(
+        input_dim=input_dim,
+        hidden_dims=hidden_dims,
+        dropout=dropout,
+    )
+
+    state_dict = torch.load(path, map_location="cpu")
+    model.load_state_dict(state_dict)
+
+    model.eval()
+
+    return model
 
 
 # --- Smoke test --------------------------------------------------------------
