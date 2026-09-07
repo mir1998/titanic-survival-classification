@@ -110,11 +110,12 @@ def build_tensors(
     #  4. Convert to tensors:
     #       torch.tensor(np.asarray(X, dtype=np.float32))
     #  5. Targets: df[TARGET].to_numpy(dtype=np.float32), then
-    #       .reshape(-1, 1)  <- shape MUST match the model's (batch, 1) output.
-    #       BCEWithLogitsLoss will broadcast a (batch,) target against a
-    #       (batch, 1) prediction into a (batch, batch) loss without
-    #       complaining. The loss still decreases, the model still "trains",
-    #       and the result is silently wrong. Keep both at (n, 1).
+    #       .reshape(-1, 1)  <- must match the model's (batch, 1) output.
+    #       BCEWithLogitsLoss compares shapes explicitly and raises
+    #       "Target size (n) must be the same as input size (n, 1)" on a
+    #       mismatch, so this fails loudly and immediately rather than
+    #       corrupting training. (Note that MSELoss would instead broadcast
+    #       with only a warning - but that is not the loss used here.)
     #  6. Return everything plus get_feature_names(pre).
     raise NotImplementedError
 
@@ -156,8 +157,10 @@ def evaluate_loss(
     """Compute loss on a full tensor without updating anything."""
     # TODO (Miriam):
     #  1. model.eval()  <- turns Dropout off. With dropout still active the
-    #     validation loss is noisy and systematically worse than reality,
-    #     which corrupts early stopping.
+    #     validation loss becomes stochastic: the same weights and the same
+    #     data give a different number on each call. Early stopping compares
+    #     these numbers across epochs, so that noise makes it stop at an
+    #     essentially arbitrary point.
     #  2. logits = model(X); return criterion(logits, y).item()
     #  The decorator already handles no_grad.
     raise NotImplementedError
