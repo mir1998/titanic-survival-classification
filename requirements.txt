@@ -1,0 +1,22 @@
+# Core data stack
+numpy==1.24.2
+pandas==2.3.1
+scikit-learn==1.5.1
+joblib==1.3.1
+
+# Deep learning
+torch==2.3.1
+
+# Visualization
+matplotlib==3.7.2
+seaborn==0.13.2
+
+# App / UI
+streamlit>=1.37,<2.0
+
+# Dataset acquisition (Kaggle API)
+kagglehub>=0.3.0
+
+# Notebook (EDA)
+jupyterlab==4.0.3
+ipykernel==6.24.0
