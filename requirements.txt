@@ -15,7 +15,9 @@ seaborn==0.13.2
 streamlit>=1.37,<2.0
 
 # Dataset acquisition (Kaggle API)
-kagglehub>=0.3.0
+# >=0.4.1 is required to read the newer single API-token format
+# (~/.kaggle/access_token), not just the legacy kaggle.json.
+kagglehub>=0.4.1
 
 # Notebook (EDA)
 jupyterlab==4.0.3
