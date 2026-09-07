@@ -197,7 +197,7 @@ split alone. Three findings were especially useful for the preprocessing decisio
 
 ### The target is imbalanced
 
-![Survival distribution](docs/eda_target_distribution.png)
+<img src="docs/eda_target_distribution.png" width="520" alt="Survival distribution">
 
 439 of 712 training passengers did not survive (61.7%). A model that predicts
 "did not survive" for everyone would therefore score 0.615 accuracy without
@@ -206,14 +206,14 @@ recall, F1 and ROC-AUC rather than on its own.
 
 ### Survival falls monotonically with passenger class
 
-![Survival by passenger class](docs/eda_pclass_survival.png)
+<img src="docs/eda_pclass_survival.png" width="520" alt="Survival by passenger class">
 
 64.9%, 44.7%, 24.3% across first, second and third class. The decline is monotonic, which supports treating `Pclass` as an ordered numerical feature.
 I therefore kept it as a single scaled ordinal feature rather than expanding it into three one-hot columns.
 
 ### `Fare` is heavily right-skewed
 
-![Fare distribution](docs/eda_fare_distribution.png)
+<img src="docs/eda_fare_distribution.png" width="620" alt="Fare distribution">
 
 Most fares sit below 100 while the tail reaches 512.3, and the mean (31.8) is
 more than double the median (14.5). This motivated the `log1p` transform to reduce skew, together with median imputation for robustness to extreme values.
