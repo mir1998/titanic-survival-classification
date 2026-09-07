@@ -1,9 +1,6 @@
 # Titanic Survival Classification
 
-An end-to-end classification pipeline predicting passenger survival on the
-Titanic: data acquisition from Kaggle, exploratory analysis, preprocessing, a
-PyTorch classifier trained by a standalone script, and a Streamlit app for
-viewing validation results and running inference on new data.
+An end-to-end Titanic survival classification project, covering data acquisition from Kaggle, exploratory analysis, preprocessing, PyTorch model training, and a Streamlit app for validation analysis and inference on new data.
 
 Only `train.csv` from the Kaggle competition is used. The held-out validation
 set is carved out of it by a seeded stratified split; `test.csv` and
@@ -23,26 +20,19 @@ Measured on the 179-row held-out validation split (seed 42, 80/20 stratified):
 | F1 | 0.756 |
 | ROC-AUC | 0.864 |
 
-A majority-class classifier that predicts "did not survive" for everyone scores
-**0.615** accuracy on this split, so that is the bar the model has to clear.
+For reference, always predicting the majority class ("did not survive") gives 0.615 accuracy on the same split.
+
+At the default 0.5 threshold, the model favors precision over recall: when it predicts survival, it is usually correct, but it still misses some survivors. The threshold slider in the Streamlit app makes this trade-off easy to explore interactively.
+
+
 
 ### How much confidence do these numbers carry?
 
-Accuracy has a bootstrap 95% confidence interval of **[0.771, 0.883]** (2,000
-resamples). The interval is wide because the validation split holds 179 rows,
-where a single passenger moves accuracy by 0.56 percentage points — a change
-from 0.827 to 0.850 amounts to classifying four more passengers correctly.
+A bootstrap estimate over the validation predictions gives a 95% confidence interval of **[0.771, 0.883]** for accuracy (2,000 resamples).
 
-Differences of a few points on a split this size are therefore not
-distinguishable from noise, which is why no hyperparameter search was run
-against the validation set: it would have produced numbers that look like
-improvements without evidence that they are.
+With only 179 validation rows, small differences should be interpreted cautiously: one passenger changes accuracy by about 0.56 percentage points. For that reason, I avoided broad hyperparameter tuning against the validation split and treated it primarily as a held-out evaluation set.
 
-<!-- TODO (Miriam): one or two sentences interpreting the precision/recall
-     gap. Worth covering: precision (0.828) is well above recall (0.696),
-     meaning the model is conservative about predicting survival at a 0.5
-     threshold - it misses survivors more often than it invents them. The
-     app's threshold slider exposes that trade-off directly. -->
+At the default 0.5 threshold, the model favors precision over recall: when it predicts survival, it is usually correct, but it still misses some survivors. The threshold slider in the Streamlit app makes this trade-off easy to explore interactively.
 
 ---
 
@@ -51,19 +41,19 @@ improvements without evidence that they are.
 ### Requirements
 
 - Python 3.11 (developed on 3.11.4)
-- A Kaggle account, for the dataset download
+- A Kaggle account for downloading the dataset
 
 ### Installation
 
 ```bash
-git clone <your-repo-url>
-cd elta
+git clone https://github.com/mir1998/titanic-survival-classification.git
+cd titanic-survival-classification
 pip install -r requirements.txt
 ```
 
 ### Kaggle credentials
 
-The dataset is fetched in code via `kagglehub`, which needs an API token.
+The dataset is downloaded in code via `kagglehub`, which requires Kaggle API credentials.
 
 1. Go to [kaggle.com/settings](https://www.kaggle.com/settings) → **API Tokens**
    → **Generate New Token**.
@@ -83,36 +73,33 @@ be exercised without Kaggle access.
 
 ## Running
 
-### Train
+### Train the model
 
 ```bash
 python train.py
 ```
 
-Downloads the data if it is not already local, fits the preprocessing pipeline
-on the training split, trains the network with early stopping, and writes four
-files to `artifacts/`:
+This downloads the data if it is not already available locally, fits the preprocessing pipeline on the training split, trains the PyTorch model with early stopping, and writes the following artifacts to `artifacts/`:
 
 | File | Contents |
 |---|---|
-| `model.pt` | Network weights (`state_dict`) |
+| `model.pt` | Trained model weights (`state_dict`) |
 | `preprocessor.joblib` | Fitted `ColumnTransformer` |
-| `metadata.json` | Architecture, hyperparameters, feature names, metrics |
-| `val_predictions.csv` | Per-row `y_true` / `y_prob` on the validation split |
+| `metadata.json` | Model architecture, hyperparameters, feature names, and validation metrics |
+| `val_predictions.csv` | Per-row `y_true` and `y_prob` for the held-out validation split |
 
-Hyperparameters can be overridden:
-
+Training parameters can be overridden from the command line, for example:
 ```bash
 python train.py --epochs 300 --lr 5e-4 --seed 7
 ```
 
-### Run the app
+### Run the Streamlit app
 
 ```bash
 streamlit run ds_app.py
 ```
 
-Requires `python train.py` to have been run first.
+The app reads the artifacts produced by `train.py`, so training must be run at least once before launching it.
 
 ### Exploratory analysis
 
@@ -128,8 +115,7 @@ jupyter lab notebooks/eda.ipynb
 
 ![Validation results](docs/app_validation.png)
 
-Metrics and plots for the held-out split, with a decision-threshold slider that
-recomputes them live.
+The validation screen summarizes performance on the held-out split and lets you explore the precision-recall trade-off by changing the decision threshold interactively.
 
 | | |
 |---|---|
@@ -140,16 +126,14 @@ recomputes them live.
 
 ![Inference](docs/app_inference.png)
 
-Enter a path to a CSV, load the trained model from disk, and get predictions.
-Try it with the bundled sample:
+Enter a path to a CSV and run the saved preprocessing pipeline and model on new data. A sample file is included for a quick test:
 
 ```
 data/sample_titanic.csv
 ```
 
-If the file contains a `Survived` column, the full evaluation is shown for it.
-If it does not, predictions are returned on their own — that is the normal
-inference case, not an error.
+If the CSV contains a `Survived` column, the app also shows evaluation metrics and plots. 
+Without labels, it simply returns predictions, which is the normal inference workflow.
 
 ---
 
@@ -165,10 +149,8 @@ ds_app.py            Streamlit app (validation + inference screens)
 notebooks/eda.ipynb  Exploratory analysis
 ```
 
-The `src/` modules hold logic shared by three consumers — the notebook,
-`train.py`, and the app — so nothing is implemented twice. `model.py` is
-separate from `train.py` specifically because the app needs the network class
-to reload weights, but must not depend on training code.
+The `src/` modules contain the reusable logic shared by the notebook, `train.py`, and the Streamlit app.
+`model.py` is kept separate from `train.py` so the app can rebuild the network and load saved weights without depending on the training loop.
 
 ### Model
 
@@ -177,18 +159,15 @@ parameters. It outputs a raw logit; the sigmoid is applied by
 `BCEWithLogitsLoss` during training and by `predict_proba` at inference, which
 is numerically more stable than a `Sigmoid` + `BCELoss` pair.
 
-Adam at lr 1e-3, batch size 32, up to 200 epochs with early stopping on
-validation loss (patience 20). Training stopped at epoch 30 with the best
-weights from epoch 10 — with 712 training rows, overfitting sets in quickly,
-which is also what motivates the dropout.
+Training uses Adam with a learning rate of `1e-3`, batch size 32, and up to 200 epochs, with early stopping on validation loss (patience 20). In the final run, training stopped at epoch 30 and restored the best weights from epoch 10.
+
+Given the small training set (712 rows), the model capacity is intentionally modest, and dropout is used as a simple form of regularization.
 
 ### Preprocessing
 
-Split into two deliberately separate stages:
+Preprocessing is split into two separate stages:
 
-**1. Row-local feature engineering** (`add_engineered_features`) — every feature
-is derived from the passenger's own row, so it produces identical output on the
-full training set and on a single-row CSV:
+**1. Row-local feature engineering** (`add_engineered_features`) - each engineered feature is derived only from that passenger's row, so the same transformation can be applied consistently during training and inference:
 
 | Feature | Derivation |
 |---|---|
@@ -198,8 +177,7 @@ full training set and on a single-row CSV:
 | `CabinRecorded` | `Cabin.notna()` |
 | `TitleGrouped` | Title from `Name`; rare titles collapsed to `Rare` |
 
-**2. A learned `ColumnTransformer`**, fitted on the training split only and
-merely applied to validation and inference data:
+**2. A learned `ColumnTransformer`**, fitted on the training split only and then applied unchanged to the validation and inference data:
 
 | Group | Features | Steps |
 |---|---|---|
@@ -217,7 +195,7 @@ Output: 17 features.
 
 Full analysis in [`notebooks/eda.ipynb`](notebooks/eda.ipynb). The split is
 performed before any exploration, and every cell operates on the training
-split alone. Three findings drove the decisions below.
+split alone. Three findings were especially useful for the preprocessing decisions that followed.
 
 ### The target is imbalanced
 
@@ -232,88 +210,80 @@ recall, F1 and ROC-AUC rather than on its own.
 
 ![Survival by passenger class](docs/eda_pclass_survival.png)
 
-64.9%, 44.7%, 24.3% across first, second and third class. The decline is
-monotonic and the gaps are comparable, so the ordering carries real
-information — the basis for keeping `Pclass` as a single scaled ordinal
-feature instead of expanding it into three one-hot columns.
+64.9%, 44.7%, 24.3% across first, second and third class. The decline is monotonic, which supports treating `Pclass` as an ordered numerical feature.
+I therefore kept it as a single scaled ordinal feature rather than expanding it into three one-hot columns.
 
 ### `Fare` is heavily right-skewed
 
 ![Fare distribution](docs/eda_fare_distribution.png)
 
 Most fares sit below 100 while the tail reaches 512.3, and the mean (31.8) is
-more than double the median (14.5). This is what motivates the `log1p`
-transform, and median rather than mean imputation.
+more than double the median (14.5). This motivated the `log1p` transform to reduce skew, together with median imputation for robustness to extreme values.
 
 ---
 
 ## Design choices
 
-### Validation data is never used to make decisions
+### Validation data is kept separate from preprocessing and EDA
 
-The split happens before any exploratory analysis, and every cell in the EDA
-notebook operates on the training split alone. Imputation values, scaling
-parameters and encoder categories are all learned inside a `ColumnTransformer`
-fitted only on training data. This keeps the reported metrics an honest
-estimate rather than a number the pipeline was tuned toward.
+The split happens before any exploratory analysis, and every cell in the EDA notebook operates on the training split alone. Imputation values, scaling parameters, and encoder categories are all learned inside a `ColumnTransformer` fitted only on the training data.
+The validation split is used only for model evaluation and early stopping, not for EDA or fitting preprocessing statistics.
 
 ### A feature was dropped because it is not reproducible at inference time
 
 `TicketGroupSize` (how many passengers share a ticket) showed a clear
 association with survival during EDA. It is excluded anyway: unlike every other
-engineered feature it depends on *which rows are present in the file* rather
-than on the passenger's own attributes. Recomputing it on the training split
-alone changes the value for 15.6% of rows, and a small inference CSV would give
-almost every passenger a group size of 1. Keeping it would mean the feature
-meant something different at training time than at inference time.
+engineered feature, it depends on *which rows are present in the file* rather
+than only on the passenger's own attributes.
 
-<!-- TODO (Miriam): this is the strongest single paragraph in the README.
-     Keep it. Consider naming the phenomenon - "train/serve skew" - which is
-     the standard term for it. -->
+Recomputing it on the training split alone changes the value for 15.6% of rows,
+and a small inference CSV would give almost every passenger a group size of 1.
+Keeping it would therefore introduce train/serve skew: the feature would mean
+something different during training than it does at inference time.
 
 ### `Pclass` treated as ordinal-numeric rather than one-hot
 
-Survival falls monotonically and fairly evenly across classes (64.9%, 44.7%,
-24.3%), so the ordering carries real information and one column suffices
-instead of three. It is scaled like the other numeric features so nothing
-reaches the network with a large constant offset.
+Survival falls monotonically across passenger classes (64.9%, 44.7%, 24.3%),
+so the ordering carries useful information. I therefore keep `Pclass` as a
+single ordinal-numeric feature rather than expanding it into three one-hot
+columns.
+
+It is standardized before entering the network so its scale is aligned with
+the other numerical inputs..
 
 ### `Fare` is log-transformed
 
 The EDA showed heavy right skew: mean 31.8 against a median of 14.5, with a
-maximum of 512.3. `log1p` compresses that tail. Negative values are clipped to
-zero first, since `log1p` is undefined below −1 and an arbitrary inference CSV
-could contain one.
+maximum of 512.3. `log1p` compresses the long right tail before scaling.
 
-### The app reads saved predictions, not the model
+For robustness, negative values are clipped to zero before the transform. They
+are not expected in the Titanic data, but this prevents malformed inference
+inputs from producing invalid values.
+
+### The validation screen uses saved predictions
 
 `train.py` writes `val_predictions.csv`, and the validation screen renders
-metrics from that file. The app therefore needs neither Kaggle access nor the
-original dataset to display results, and the threshold slider is instant
-because nothing is recomputed.
+metrics and plots directly from that file. This means the validation page does
+not need Kaggle access or the original dataset, and the threshold slider updates
+instantly because the model does not need to run again.
 
 ### Metrics beyond accuracy
 
-38.3% of passengers survived, so accuracy alone is misleading — a trivial
-majority-class model scores 0.615. Precision, recall, F1 and ROC-AUC are all
-reported, and the threshold slider makes the precision/recall trade-off visible
-rather than fixed at 0.5.
+Because only 38.3% of passengers survived, accuracy alone does not tell the full
+story: a trivial majority-class classifier already reaches 0.615 accuracy.
+
+I therefore report precision, recall, F1, and ROC-AUC alongside accuracy. The
+Streamlit threshold slider also makes the precision/recall trade-off visible
+instead of fixing the model to a single operating point.
 
 ---
 
 ## Reproducibility
 
-`set_seed()` seeds Python's `random`, NumPy and PyTorch; the split and the
-`DataLoader` shuffling are both seeded explicitly. Two runs of `python
-train.py` with the same seed produce identical metrics. `requirements.txt`
-pins exact versions.
+`set_seed()` seeds Python's `random`, NumPy, and PyTorch, while both the
+train/validation split and `DataLoader` shuffling are seeded explicitly.
+`requirements.txt` pins the package versions used for the project.
 
-Verified end to end: deleting `artifacts/`, re-running `python train.py`, and
-reloading the saved model and preprocessor reproduces `val_predictions.csv` to
-within 3e-08.
-
-<!-- TODO (Miriam), optional if time allows:
-     A logistic-regression baseline on the identical feature pipeline would
-     answer the obvious question - did the neural network earn its complexity
-     on 712 rows? Reporting that honestly, whatever it shows, is worth more
-     than a small accuracy gain from tuning. -->
+The pipeline was also checked end to end by deleting `artifacts/`, rerunning
+`python train.py`, and reloading the saved model and preprocessor. The regenerated
+validation probabilities matched the previous run to within `3e-08`.
