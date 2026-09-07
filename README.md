@@ -114,9 +114,7 @@ jupyter lab notebooks/eda.ipynb
 
 ### Validation Results screen
 
-<!-- TODO (Miriam): add docs/app_validation.png here:
-     ![Validation results](docs/app_validation.png)
-     Capture the threshold slider plus the metrics row. -->
+![Validation results](docs/app_validation.png)
 
 Metrics and plots for the held-out split, with a decision-threshold slider that
 recomputes them live.
@@ -128,9 +126,7 @@ recomputes them live.
 
 ### Inference screen
 
-<!-- TODO (Miriam): add docs/app_inference.png here:
-     ![Inference](docs/app_inference.png)
-     Capture the path field plus the predictions table. -->
+![Inference](docs/app_inference.png)
 
 Enter a path to a CSV, load the trained model from disk, and get predictions.
 Try it with the bundled sample:
