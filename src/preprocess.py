@@ -228,7 +228,7 @@ def load_preprocessor(path: Path | str) -> ColumnTransformer:
 
 if __name__ == "__main__":
     # Block 3 verification: `python -m src.preprocess` from the project root.
-    from src.data import TARGET, download_titanic, load_train_csv, split_train_val
+    from src.data import download_titanic, load_train_csv, split_train_val
 
     train_df, val_df = split_train_val(load_train_csv(download_titanic()))
 

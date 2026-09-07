@@ -21,7 +21,6 @@ import numpy as np
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
-    auc,
     confusion_matrix,
     f1_score,
     precision_recall_curve,
@@ -67,45 +66,113 @@ def plot_confusion_matrix(
     y_prob: np.ndarray,
     threshold: float = DEFAULT_THRESHOLD,
 ) -> plt.Figure:
-    """Confusion matrix as an annotated heatmap.
+    """Confusion matrix as an annotated heatmap."""
 
-    Returns
-    -------
-    matplotlib.figure.Figure
-    """
-    # TODO (Miriam):
-    #  1. y_pred from threshold, then confusion_matrix(y_true, y_pred)
-    #  2. fig, ax = plt.subplots(); ax.imshow(cm, cmap="Blues")
-    #  3. Annotate each cell with its count (nested loop + ax.text)
-    #  4. Tick labels: ["Did not survive", "Survived"] on both axes -
-    #     the same wording you used in the notebook.
-    #  5. Return fig. No plt.show().
-    raise NotImplementedError
+    y_pred = (y_prob >= threshold).astype(int)
+    cm = confusion_matrix(y_true, y_pred)
+
+    fig, ax = plt.subplots(figsize=(5, 4))
+
+    im = ax.imshow(cm, cmap="Blues")
+
+    labels = ["Did not survive", "Survived"]
+
+    ax.set_xticks([0, 1])
+    ax.set_yticks([0, 1])
+    ax.set_xticklabels(labels)
+    ax.set_yticklabels(labels)
+
+    ax.set_xlabel("Predicted label")
+    ax.set_ylabel("True label")
+    ax.set_title(f"Confusion Matrix (threshold = {threshold:.2f})")
+
+    # Annotate each cell with its count
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(
+                j,
+                i,
+                str(cm[i, j]),
+                ha="center",
+                va="center",
+            )
+
+    fig.colorbar(im, ax=ax)
+    fig.tight_layout()
+
+    return fig
 
 
-def plot_roc_curve(y_true: np.ndarray, y_prob: np.ndarray) -> plt.Figure:
+def plot_roc_curve(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+) -> plt.Figure:
     """ROC curve with the AUC in the legend, plus the chance diagonal."""
-    # TODO (Miriam):
-    #  fpr, tpr, _ = roc_curve(y_true, y_prob); auc_value = roc_auc_score(...)
-    #  Plot the curve, add the y=x dashed diagonal (a random classifier),
-    #  label the axes, put AUC in the legend, return fig.
-    raise NotImplementedError
+
+    fpr, tpr, _ = roc_curve(y_true, y_prob)
+    auc_value = roc_auc_score(y_true, y_prob)
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+
+    ax.plot(
+        fpr,
+        tpr,
+        label=f"ROC curve (AUC = {auc_value:.3f})",
+    )
+
+    # Chance-level classifier
+    ax.plot(
+        [0, 1],
+        [0, 1],
+        linestyle="--",
+        label="Chance",
+    )
+
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.set_title("ROC Curve")
+    ax.legend(loc="lower right")
+    ax.grid(alpha=0.3)
+
+    fig.tight_layout()
+
+    return fig
 
 
-def plot_precision_recall_curve(y_true: np.ndarray, y_prob: np.ndarray) -> plt.Figure:
-    """Precision-recall curve with average precision in the legend.
+def plot_precision_recall_curve(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+) -> plt.Figure:
+    """Precision-recall curve with average precision in the legend."""
 
-    More informative than ROC on imbalanced data, which is why both appear.
-    """
-    # TODO (Miriam):
-    #  precision, recall, _ = precision_recall_curve(y_true, y_prob)
-    #  auc(recall, precision) gives the area. Add a horizontal baseline at
-    #  y_true.mean() - that is what a random classifier achieves here, and it
-    #  is exactly the 38.3% survival rate from the EDA.
-    # average_precision_score(y_true, y_prob) summarizes the PR curve.
-    # Add a horizontal baseline at y_true.mean(), which represents
-    # the positive-class prevalence.
-    raise NotImplementedError
+    precision, recall, _ = precision_recall_curve(y_true, y_prob)
+    average_precision = average_precision_score(y_true, y_prob)
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+
+    ax.plot(
+        recall,
+        precision,
+        label=f"PR curve (AP = {average_precision:.3f})",
+    )
+
+    # Baseline equals the positive-class prevalence
+    baseline = y_true.mean()
+    ax.axhline(
+        baseline,
+        linestyle="--",
+        label=f"Baseline = {baseline:.3f}",
+    )
+
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Precision")
+    ax.set_title("Precision-Recall Curve")
+    ax.legend(loc="lower left")
+    ax.grid(alpha=0.3)
+
+    fig.tight_layout()
+
+    return fig
 
 
 def plot_probability_distribution(
@@ -113,17 +180,39 @@ def plot_probability_distribution(
     y_prob: np.ndarray,
     threshold: float = DEFAULT_THRESHOLD,
 ) -> plt.Figure:
-    """Overlaid histograms of predicted probability, split by true class.
+    """Overlaid histograms of predicted probability, split by true class."""
 
-    Shows how well-separated the two classes are, and where the threshold
-    falls relative to that separation. Good separation looks like two humps
-    pushed to opposite ends.
-    """
-    # TODO (Miriam):
-    #  Two ax.hist() calls (y_prob[y_true == 0] and y_prob[y_true == 1]) with
-    #  alpha for overlap, plus ax.axvline(threshold, linestyle="--") to mark
-    #  the cut. Use the same red/green you used in the notebook for consistency.
-    raise NotImplementedError
+    fig, ax = plt.subplots(figsize=(6, 5))
+
+    ax.hist(
+        y_prob[y_true == 0],
+        bins=15,
+        alpha=0.6,
+        label="Did not survive",
+    )
+
+    ax.hist(
+        y_prob[y_true == 1],
+        bins=15,
+        alpha=0.6,
+        label="Survived",
+    )
+
+    ax.axvline(
+        threshold,
+        linestyle="--",
+        label=f"Threshold = {threshold:.2f}",
+    )
+
+    ax.set_xlabel("Predicted survival probability")
+    ax.set_ylabel("Count")
+    ax.set_title("Predicted Probability Distribution")
+    ax.legend()
+    ax.grid(alpha=0.3)
+
+    fig.tight_layout()
+
+    return fig
 
 
 # --- Smoke test --------------------------------------------------------------
